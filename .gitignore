@@ -1,0 +1,28 @@
+# Secrets
+.env
+cookies.txt
+cookies1.txt
+cookies2.txt
+client_secrets.json
+token.json
+
+# Data files
+leads.csv
+leads_backup*.csv
+temp_leads.json
+
+# Video files
+*.mp4
+*.m4a
+*.webm
+satisfying_bg.mp4
+output_clips/
+
+# Build artifacts & cache
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.temp/
+dashboard/backend/__pycache__/
+dashboard/backend/output_clips/

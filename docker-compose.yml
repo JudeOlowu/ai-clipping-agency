@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  agency:
+    build: .
+    container_name: ai-clipping-agency
+    ports:
+      - "8000:8000"
+      - "5173:5173"
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      # Mount the output clips directory to view generated videos on the host
+      - ./output_clips:/app/output_clips
+      # Mount leads.csv to preserve the CRM database
+      - ./leads.csv:/app/leads.csv
+    restart: unless-stopped

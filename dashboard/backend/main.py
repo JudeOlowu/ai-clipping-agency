@@ -1,0 +1,219 @@
+import csv
+import os
+import urllib.parse
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from uploader import upload_video
+
+app = FastAPI()
+
+OUTPUT_CLIPS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "output_clips")
+if os.path.exists(OUTPUT_CLIPS_DIR):
+    app.mount("/output_clips", StaticFiles(directory=OUTPUT_CLIPS_DIR), name="output_clips")
+
+
+# Allow frontend to access the API (Useful in dev)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+LEADS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "leads.csv")
+
+class PitchRequest(BaseModel):
+    row_index: int
+
+@app.get("/api/leads")
+def get_leads():
+    print("LEADS_FILE is:", LEADS_FILE, "Exists:", os.path.exists(LEADS_FILE))
+    if not os.path.exists(LEADS_FILE):
+        return []
+        
+    leads = []
+    with open(LEADS_FILE, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        print("Header is:", header)
+        for i, row in enumerate(reader):
+            if len(row) >= 4:
+                # Format: Subreddit, URL, Title, Drafted Proposal, VideoPath(optional)
+                contacted = "[CONTACTED]" in row[3]
+                video_path = row[4].strip() if len(row) > 4 and row[4].strip() else None
+                has_video = video_path is not None and os.path.exists(video_path)
+                
+                final_pitch = row[3].replace("[CONTACTED] ", "") if contacted else row[3]
+                
+                import urllib.parse
+                encoded_subject = urllib.parse.quote("Free Sample Video Edit for your channel!")
+                encoded_message = urllib.parse.quote(final_pitch)
+                compose_url = f"https://www.reddit.com/message/compose/?subject={encoded_subject}&message={encoded_message}"
+
+                leads.append({
+                    "id": i,
+                    "subreddit": row[0],
+                    "url": row[1],
+                    "title": row[2],
+                    "proposal": final_pitch,
+                    "has_video": has_video,
+                    "video_path": video_path,
+                    "contacted": contacted,
+                    "compose_url": compose_url
+                })
+    return leads
+
+class DeleteLeadsRequest(BaseModel):
+    indices: list[int] = []
+
+@app.post("/api/leads/delete")
+def clear_leads(req: DeleteLeadsRequest):
+    if not os.path.exists(LEADS_FILE):
+        return {"success": True}
+        
+    if not req.indices:
+        # Clear all leads
+        with open(LEADS_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(["Subreddit", "URL", "Title", "Drafted Proposal", "Local Clip Path"])
+    else:
+        # Clear only selected leads
+        with open(LEADS_FILE, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+        
+        if len(rows) > 0:
+            header = rows[0]
+            data_rows = rows[1:]
+            
+            indices_to_delete = set(req.indices)
+            new_data_rows = [row for i, row in enumerate(data_rows) if i not in indices_to_delete]
+            
+            with open(LEADS_FILE, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerows(new_data_rows)
+            
+    return {"success": True}
+
+@app.post("/api/generate-pitch-url")
+def generate_pitch_url(req: PitchRequest):
+    row_index = req.row_index
+    
+    if not os.path.exists(LEADS_FILE):
+        raise HTTPException(status_code=404, detail="leads.csv not found")
+        
+    rows = []
+    with open(LEADS_FILE, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+        
+    # The frontend sends an index starting at 0 for the first lead.
+    # Since our CSV has a header, the actual row is at row_index + 1.
+    actual_row_index = row_index + 1
+    
+    if actual_row_index >= len(rows):
+        raise HTTPException(status_code=404, detail="Lead not found")
+        
+    row = rows[actual_row_index]
+    if len(row) < 5 or not row[4].strip() or not os.path.exists(row[4].strip()):
+        raise HTTPException(status_code=400, detail="No generated video found for this lead")
+        
+    video_path = row[4].strip()
+    proposal = row[3]
+    
+    # 1. Upload the video
+    print(f"Calling upload_video({video_path})")
+    public_url = upload_video(video_path)
+    print(f"public_url returned: {public_url}")
+    if not public_url:
+        raise HTTPException(status_code=500, detail="Failed to upload video to Catbox or tmpfiles.org")
+        
+    # 2. Inject URL into pitch
+    final_pitch = proposal.replace(f"[LINK TO LOCAL FILE: {video_path}]", public_url)
+    
+    # 3. Mark as contacted
+    if "[CONTACTED]" not in final_pitch:
+        rows[actual_row_index][3] = "[CONTACTED] " + final_pitch
+        with open(LEADS_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+            
+    # 4. Generate Reddit Compose URL
+    # Extract post ID from URL to get author
+    reddit_url = row[1]
+    author = ""
+    try:
+        # We can't use PRAW anymore, so we don't dynamically fetch the author's exact username from the post ID.
+        # But we can try to guess it if we had it, or we just leave 'to' blank and the user fills it,
+        # OR we can just instruct the dashboard to tell the user to click the reddit link, find the author, and use the URL.
+        # Wait, without PRAW we don't know the author's username just from a post URL unless we scrape it.
+        # So we'll just leave `to` empty. The user will have to manually type the username or we open the post URL instead!
+        pass
+    except Exception:
+        pass
+        
+    encoded_subject = urllib.parse.quote("Free Sample Video Edit for your channel!")
+    encoded_message = urllib.parse.quote(final_pitch)
+    
+    compose_url = f"https://www.reddit.com/message/compose/?subject={encoded_subject}&message={encoded_message}"
+    
+    return {
+        "success": True,
+        "compose_url": compose_url,
+        "post_url": reddit_url,
+        "public_video_url": public_url,
+        "final_pitch": final_pitch
+    }
+
+class ManualClipRequest(BaseModel):
+    url: str
+    style: str
+
+@app.post("/api/manual-clip")
+def trigger_manual_clip(req: ManualClipRequest):
+    import subprocess
+    import sys
+    
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_path = os.path.join(project_root, "clipper_agent.py")
+    
+    # Run the clipper agent in the background so the API returns immediately
+    subprocess.Popen([sys.executable, script_path, req.url, req.style], cwd=project_root)
+    return {"success": True, "message": f"Started manual clipping in background for {req.url} with style {req.style}"}
+
+@app.get("/api/gallery")
+def get_gallery():
+    import glob
+    import time
+    if not os.path.exists(OUTPUT_CLIPS_DIR):
+        return []
+    
+    files = glob.glob(os.path.join(OUTPUT_CLIPS_DIR, "*.mp4"))
+    files.sort(key=os.path.getctime, reverse=True)
+    
+    videos = []
+    for f in files:
+        filename = os.path.basename(f)
+        videos.append({
+            "filename": filename,
+            "url": f"/output_clips/{filename}",
+            "created_at": os.path.getctime(f)
+        })
+    return videos
+
+frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting Agency Dashboard Backend on http://localhost:8000")
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
