@@ -1,0 +1,8 @@
+opencv-python-headless
+moviepy
+yt-dlp
+faster-whisper
+Pillow
+numpy
+requests
+runpod

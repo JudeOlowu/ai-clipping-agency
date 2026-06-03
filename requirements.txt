@@ -2,12 +2,6 @@ praw==7.7.1
 openai==1.54.3
 python-dotenv==1.0.1
 requests==2.32.3
-opencv-python-headless
-moviepy
-yt-dlp
-faster-whisper
-Pillow
-numpy
 fastapi
 uvicorn
 google-auth-oauthlib

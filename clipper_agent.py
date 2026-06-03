@@ -511,14 +511,18 @@ def detect_existing_subtitles(video_path: str) -> bool:
         print(f"--> OCR Error: {e}")
         return False
 
-def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT"):
+def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", force_no_subs: bool = False):
     print(f"Starting Fully Local Clipper Agent Pipeline... (Style: {style})")
     output_dir = "output_clips"
     os.makedirs(output_dir, exist_ok=True)
 
     temp_video = download_video(video_url)
     
-    has_subtitles = detect_existing_subtitles(temp_video)
+    if force_no_subs:
+        print("--> User requested NO SUBTITLES via --no-subs flag. Skipping AI subtitle detection/generation.")
+        has_subtitles = True
+    else:
+        has_subtitles = detect_existing_subtitles(temp_video)
 
     print("--> Extracting audio and transcribing via local Whisper model...")
     segments = transcribe_video(temp_video)
@@ -537,14 +541,17 @@ def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT"):
 
 if __name__ == "__main__":
     style = "DEFAULT"
-    if len(sys.argv) > 1:
-        video_url = sys.argv[1]
-        if len(sys.argv) > 2:
-            style = sys.argv[2]
+    force_no_subs = "--no-subs" in sys.argv
+    args = [arg for arg in sys.argv[1:] if arg != "--no-subs"]
+    
+    if len(args) > 0:
+        video_url = args[0]
+        if len(args) > 1:
+            style = args[1]
     else:
         video_url = input("Enter YouTube URL (or press Enter to use your last video): ")
         if not video_url.strip():
             # Defaults back to the user's previously provided video
             video_url = "https://youtu.be/7Ff09Qgmgnw?si=JW9LCg7Y-f_ozlP4"
     
-    run_clipper(video_url, style=style)
+    run_clipper(video_url, style=style, force_no_subs=force_no_subs)

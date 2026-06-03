@@ -1,20 +1,12 @@
 FROM python:3.11-slim
 
-# Install system dependencies (FFmpeg, OpenCV dependencies, ImageMagick, Node.js)
+# Install system dependencies (Node.js)
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libgl1 \
-    imagemagick \
     curl \
     supervisor \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
-
-# Fix ImageMagick policy to allow text rendering for MoviePy
-RUN sed -i 's/rights="none" pattern="path"/rights="read|write" pattern="path"/g' /etc/ImageMagick-6/policy.xml || true
 
 WORKDIR /app
 

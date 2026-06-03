@@ -176,6 +176,7 @@ def generate_pitch_url(req: PitchRequest):
 class ManualClipRequest(BaseModel):
     url: str
     style: str
+    generateSubtitles: bool = True
 
 @app.post("/api/manual-clip")
 def trigger_manual_clip(req: ManualClipRequest):
@@ -195,7 +196,8 @@ def trigger_manual_clip(req: ManualClipRequest):
         payload = {
             "input": {
                 "video_url": req.url,
-                "style": req.style
+                "style": req.style,
+                "generateSubtitles": req.generateSubtitles
             }
         }
         url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/run"
@@ -209,7 +211,11 @@ def trigger_manual_clip(req: ManualClipRequest):
         # Fallback: Run locally
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         script_path = os.path.join(project_root, "clipper_agent.py")
-        subprocess.Popen([sys.executable, script_path, req.url, req.style], cwd=project_root)
+        args = [sys.executable, script_path, req.url, req.style]
+        if not req.generateSubtitles:
+            args.append("--no-subs")
+            
+        subprocess.Popen(args, cwd=project_root)
         return {"success": True, "message": f"Started local manual clipping in background for {req.url}"}
 
 @app.get("/api/gallery")
