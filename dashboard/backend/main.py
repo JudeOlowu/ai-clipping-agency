@@ -184,6 +184,8 @@ class ManualClipRequest(BaseModel):
     style: str
     generateSubtitles: bool = True
 
+
+
 from fastapi import BackgroundTasks
 
 def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runpod_endpoint_id: str, output_dir: str):
@@ -251,17 +253,20 @@ def trigger_manual_clip(req: ManualClipRequest, background_tasks: BackgroundTask
     if runpod_api_key and runpod_endpoint_id:
         print(f"Triggering RunPod Serverless API for {req.url}")
         background_tasks.add_task(process_manual_clip_runpod, req, runpod_api_key, runpod_endpoint_id, OUTPUT_CLIPS_DIR)
-        return {"success": True, "message": f"Started RunPod background job for {req.url}"}
+        return {"success": True, "message": f"Started RunPod background job for {req.url}. It will appear in the gallery when finished."}
     else:
-        # Fallback: Run locally
+        print(f"Triggering local manual clip for {req.url}")
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         script_path = os.path.join(project_root, "clipper_agent.py")
+        
         args = [sys.executable, script_path, req.url, req.style]
         if not req.generateSubtitles:
             args.append("--no-subs")
             
+        # Run the clipper script in the background locally
         subprocess.Popen(args, cwd=project_root)
-        return {"success": True, "message": f"Started local manual clipping in background for {req.url}"}
+        
+        return {"success": True, "message": f"Started local manual clipping in background for {req.url}. It will appear in the gallery when finished."}
 
 @app.get("/api/gallery")
 def get_gallery():
