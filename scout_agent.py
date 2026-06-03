@@ -164,21 +164,55 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                     if video_url:
                         print(f"--> Found Video URL in post: {video_url}")
                         print(f"--> Detected Style: {style}")
-                        print("--> Sending to Clipper Agent to generate Proof-of-Work portfolio piece...")
-                        try:
-                            # Invoke the Clipper Agent fully locally!
-                            clip_path = clipper_agent.run_clipper(video_url, title, style=style)
-                            
-                            # Upload the finished clip to YouTube as Unlisted
-                            if clip_path and os.path.exists(clip_path):
-                                print(f"--> Uploading proof-of-work clip to YouTube...")
-                                import uploader
-                                public_video_url = uploader.upload_video(clip_path, title=f"Sample Edit: {title}")
-                                if public_video_url:
-                                    clip_path = public_video_url
-                                    
-                        except Exception as e:
-                            print(f"--> Clipper Agent failed to process URL: {e}")
+                        
+                        runpod_api_key = os.getenv("RUNPOD_API_KEY")
+                        runpod_endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
+                        
+                        if runpod_api_key and runpod_endpoint_id:
+                            print("--> Offloading heavy clipping job to RunPod Serverless GPU...")
+                            import requests
+                            headers = {
+                                "Authorization": f"Bearer {runpod_api_key}",
+                                "Content-Type": "application/json"
+                            }
+                            payload = {
+                                "input": {
+                                    "video_url": video_url,
+                                    "style": style,
+                                    "client_title": title
+                                }
+                            }
+                            try:
+                                # Use runsync so we wait for the GPU to finish returning the URL before pitching
+                                url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
+                                rp_res = requests.post(url, json=payload, headers=headers).json()
+                                
+                                if rp_res.get("status") == "COMPLETED":
+                                    output = rp_res.get("output", {})
+                                    if output.get("success"):
+                                        clip_path = output.get("public_url")
+                                        print(f"--> RunPod finished successfully! Public Asset URL: {clip_path}")
+                                    else:
+                                        print(f"--> RunPod worker reported an error: {output.get('error')}")
+                                else:
+                                    print(f"--> RunPod job failed or timed out: {rp_res}")
+                            except Exception as e:
+                                print(f"--> Failed to contact RunPod API: {e}")
+                                
+                        if not clip_path:
+                            # Fallback if RunPod fails or isn't configured
+                            print("--> No RunPod output (or not configured). Falling back to LOCAL processing...")
+                            try:
+                                clip_path = clipper_agent.run_clipper(video_url, title, style=style)
+                                
+                                if clip_path and os.path.exists(clip_path):
+                                    print(f"--> Uploading local proof-of-work clip to host...")
+                                    import uploader
+                                    public_video_url = uploader.upload_video(clip_path)
+                                    if public_video_url:
+                                        clip_path = public_video_url
+                            except Exception as e:
+                                print(f"--> Local Clipper Agent failed to process URL: {e}")
                     else:
                         print("--> No Video URL found in post. Skipping auto-clipping.")
                     
