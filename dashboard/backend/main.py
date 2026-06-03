@@ -201,7 +201,18 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
         print(f"Waiting for RunPod to finish manual clip for {req.url}...")
         response = requests.post(url, json=payload, headers=headers).json()
         
-        if response.get("status") == "COMPLETED":
+        job_id = response.get("id")
+        status = response.get("status")
+        
+        # If it takes longer than 90 seconds, runsync returns IN_PROGRESS, so we poll
+        while status in ["IN_QUEUE", "IN_PROGRESS"]:
+            print(f"Job {job_id} is {status}, waiting 10s...")
+            time.sleep(10)
+            status_url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/status/{job_id}"
+            response = requests.get(status_url, headers=headers).json()
+            status = response.get("status")
+        
+        if status == "COMPLETED":
             output = response.get("output", {})
             if output.get("success"):
                 public_url = output.get("public_url")
@@ -219,7 +230,7 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
             else:
                 print(f"RunPod worker error: {output.get('error')}")
         else:
-            print(f"RunPod runsync failed/timed out: {response}")
+            print(f"RunPod job failed with status {status}: {response}")
     except Exception as e:
         print(f"Failed to process manual clip via RunPod: {e}")
 

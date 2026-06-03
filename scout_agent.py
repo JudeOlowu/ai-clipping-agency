@@ -187,7 +187,19 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                                 url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
                                 rp_res = requests.post(url, json=payload, headers=headers).json()
                                 
-                                if rp_res.get("status") == "COMPLETED":
+                                job_id = rp_res.get("id")
+                                status = rp_res.get("status")
+                                
+                                # If it takes longer than 90 seconds, runsync returns IN_PROGRESS, so we poll
+                                while status in ["IN_QUEUE", "IN_PROGRESS"]:
+                                    print(f"--> Job {job_id} is {status}, waiting 10s...")
+                                    import time
+                                    time.sleep(10)
+                                    status_url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/status/{job_id}"
+                                    rp_res = requests.get(status_url, headers=headers).json()
+                                    status = rp_res.get("status")
+                                
+                                if status == "COMPLETED":
                                     output = rp_res.get("output", {})
                                     if output.get("success"):
                                         clip_path = output.get("public_url")
