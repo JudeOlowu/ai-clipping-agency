@@ -13,6 +13,7 @@ from uploader import upload_video
 app = FastAPI()
 
 OUTPUT_CLIPS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "output_clips")
+os.makedirs(OUTPUT_CLIPS_DIR, exist_ok=True)
 if os.path.exists(OUTPUT_CLIPS_DIR):
     app.mount("/output_clips", StaticFiles(directory=OUTPUT_CLIPS_DIR), name="output_clips")
 

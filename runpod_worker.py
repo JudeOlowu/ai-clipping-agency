@@ -18,7 +18,17 @@ def handler(job):
         
         # Upload to Catbox for public URL
         print(f"Uploading {clip_path} to Catbox...")
-        public_url = upload_video(clip_path)
+        import requests
+        url = "https://catbox.moe/user/api.php"
+        with open(clip_path, 'rb') as f:
+            data = {'reqtype': 'fileupload'}
+            files = {'fileToUpload': f}
+            response = requests.post(url, data=data, files=files)
+            
+        if response.status_code == 200:
+            public_url = response.text
+        else:
+            raise Exception(f"Catbox upload failed: {response.text}")
         
         # Clean up local file
         if os.path.exists(clip_path):
