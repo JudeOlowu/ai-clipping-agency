@@ -178,35 +178,63 @@ class ManualClipRequest(BaseModel):
     style: str
     generateSubtitles: bool = True
 
+from fastapi import BackgroundTasks
+
+def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runpod_endpoint_id: str, output_dir: str):
+    import requests
+    import os
+    import time
+    
+    headers = {
+        "Authorization": f"Bearer {runpod_api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "input": {
+            "video_url": req.url,
+            "style": req.style,
+            "generateSubtitles": req.generateSubtitles
+        }
+    }
+    url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
+    try:
+        print(f"Waiting for RunPod to finish manual clip for {req.url}...")
+        response = requests.post(url, json=payload, headers=headers).json()
+        
+        if response.get("status") == "COMPLETED":
+            output = response.get("output", {})
+            if output.get("success"):
+                public_url = output.get("public_url")
+                print(f"RunPod finished! Downloading {public_url} to gallery...")
+                
+                video_data = requests.get(public_url).content
+                filename = f"manual_clip_{int(time.time())}.mp4"
+                filepath = os.path.join(output_dir, filename)
+                
+                os.makedirs(output_dir, exist_ok=True)
+                with open(filepath, "wb") as f:
+                    f.write(video_data)
+                    
+                print(f"Successfully saved to {filepath}!")
+            else:
+                print(f"RunPod worker error: {output.get('error')}")
+        else:
+            print(f"RunPod runsync failed/timed out: {response}")
+    except Exception as e:
+        print(f"Failed to process manual clip via RunPod: {e}")
+
 @app.post("/api/manual-clip")
-def trigger_manual_clip(req: ManualClipRequest):
+def trigger_manual_clip(req: ManualClipRequest, background_tasks: BackgroundTasks):
     import subprocess
     import sys
-    import requests
     
     runpod_api_key = os.getenv("RUNPOD_API_KEY")
     runpod_endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
     
     if runpod_api_key and runpod_endpoint_id:
         print(f"Triggering RunPod Serverless API for {req.url}")
-        headers = {
-            "Authorization": f"Bearer {runpod_api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "input": {
-                "video_url": req.url,
-                "style": req.style,
-                "generateSubtitles": req.generateSubtitles
-            }
-        }
-        url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/run"
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            job_id = response.json().get("id")
-            return {"success": True, "message": f"Started RunPod job {job_id} for {req.url}"}
-        else:
-            return {"success": False, "message": f"RunPod API failed: {response.text}"}
+        background_tasks.add_task(process_manual_clip_runpod, req, runpod_api_key, runpod_endpoint_id, OUTPUT_CLIPS_DIR)
+        return {"success": True, "message": f"Started RunPod background job for {req.url}"}
     else:
         # Fallback: Run locally
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
