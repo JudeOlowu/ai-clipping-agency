@@ -9,6 +9,7 @@ type Lead = {
   has_video: boolean;
   video_path: string;
   contacted: boolean;
+  compose_url?: string;
 };
 
 function App() {
