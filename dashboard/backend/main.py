@@ -124,18 +124,23 @@ def generate_pitch_url(req: PitchRequest):
         raise HTTPException(status_code=404, detail="Lead not found")
         
     row = rows[actual_row_index]
-    if len(row) < 5 or not row[4].strip() or not os.path.exists(row[4].strip()):
+    if len(row) < 5 or not row[4].strip():
         raise HTTPException(status_code=400, detail="No generated video found for this lead")
         
     video_path = row[4].strip()
     proposal = row[3]
     
-    # 1. Upload the video
-    print(f"Calling upload_video({video_path})")
-    public_url = upload_video(video_path)
-    print(f"public_url returned: {public_url}")
-    if not public_url:
-        raise HTTPException(status_code=500, detail="Failed to upload video to Catbox or tmpfiles.org")
+    if video_path.startswith("http"):
+        public_url = video_path
+    else:
+        if not os.path.exists(video_path):
+            raise HTTPException(status_code=400, detail="Video file not found on disk")
+        # 1. Upload the video
+        print(f"Calling upload_video({video_path})")
+        public_url = upload_video(video_path)
+        print(f"public_url returned: {public_url}")
+        if not public_url:
+            raise HTTPException(status_code=500, detail="Failed to upload video")
         
     # 2. Inject URL into pitch
     final_pitch = proposal.replace(f"[LINK TO LOCAL FILE: {video_path}]", public_url)

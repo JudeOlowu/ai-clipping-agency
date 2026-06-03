@@ -202,8 +202,25 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                                 if status == "COMPLETED":
                                     output = rp_res.get("output", {})
                                     if output.get("success"):
-                                        clip_path = output.get("public_url")
-                                        print(f"--> RunPod finished successfully! Public Asset URL: {clip_path}")
+                                        public_url = output.get("public_url")
+                                        print(f"--> RunPod finished successfully! Catbox URL: {public_url}")
+                                        
+                                        print("--> Downloading video from Catbox to local system...")
+                                        import time
+                                        video_data = requests.get(public_url).content
+                                        local_filename = os.path.join("output_clips", f"runpod_clip_{int(time.time())}.mp4")
+                                        os.makedirs("output_clips", exist_ok=True)
+                                        with open(local_filename, "wb") as f:
+                                            f.write(video_data)
+                                            
+                                        print(f"--> Uploading to YouTube for final pitch...")
+                                        import uploader
+                                        youtube_url = uploader.upload_video(local_filename)
+                                        if youtube_url:
+                                            clip_path = youtube_url
+                                            print(f"--> YouTube URL obtained: {clip_path}")
+                                        else:
+                                            clip_path = public_url # Fallback to Catbox
                                     else:
                                         print(f"--> RunPod worker reported an error: {output.get('error')}")
                                 else:
