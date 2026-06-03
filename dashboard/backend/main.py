@@ -181,13 +181,36 @@ class ManualClipRequest(BaseModel):
 def trigger_manual_clip(req: ManualClipRequest):
     import subprocess
     import sys
+    import requests
     
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    script_path = os.path.join(project_root, "clipper_agent.py")
+    runpod_api_key = os.getenv("RUNPOD_API_KEY")
+    runpod_endpoint_id = os.getenv("RUNPOD_ENDPOINT_ID")
     
-    # Run the clipper agent in the background so the API returns immediately
-    subprocess.Popen([sys.executable, script_path, req.url, req.style], cwd=project_root)
-    return {"success": True, "message": f"Started manual clipping in background for {req.url} with style {req.style}"}
+    if runpod_api_key and runpod_endpoint_id:
+        print(f"Triggering RunPod Serverless API for {req.url}")
+        headers = {
+            "Authorization": f"Bearer {runpod_api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "input": {
+                "video_url": req.url,
+                "style": req.style
+            }
+        }
+        url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/run"
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            job_id = response.json().get("id")
+            return {"success": True, "message": f"Started RunPod job {job_id} for {req.url}"}
+        else:
+            return {"success": False, "message": f"RunPod API failed: {response.text}"}
+    else:
+        # Fallback: Run locally
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        script_path = os.path.join(project_root, "clipper_agent.py")
+        subprocess.Popen([sys.executable, script_path, req.url, req.style], cwd=project_root)
+        return {"success": True, "message": f"Started local manual clipping in background for {req.url}"}
 
 @app.get("/api/gallery")
 def get_gallery():
