@@ -201,7 +201,8 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
         "input": {
             "video_url": req.url,
             "style": req.style,
-            "generateSubtitles": req.generateSubtitles
+            "generateSubtitles": req.generateSubtitles,
+            "api_key": os.getenv("OPENROUTER_API_KEY", "")
         }
     }
     url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
