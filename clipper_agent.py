@@ -96,7 +96,8 @@ def download_video(url: str, output_path: str = "temp_video.mp4") -> str:
 def transcribe_video(video_path: str):
     """Uses faster-whisper (base model) to transcribe the video - fallback when no captions available."""
     print("Loading faster-whisper model (base)...")
-    model = WhisperModel("base", device="cpu", compute_type="int8")
+    # Using CUDA since we are on RunPod GPUs now!
+    model = WhisperModel("base", device="cuda", compute_type="float16")
     
     print("Transcribing video (with word-level timestamps)...")
     segments_gen, _ = model.transcribe(video_path, beam_size=1, word_timestamps=True, task="translate")
