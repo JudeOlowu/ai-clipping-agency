@@ -1,6 +1,15 @@
 import runpod
 import os
-from clipper_agent import run_clipper
+import multiprocessing
+import traceback
+
+def clipper_process_wrapper(queue, video_url, client_title, style):
+    try:
+        from clipper_agent import run_clipper
+        clip_path = run_clipper(video_url, client_title=client_title, style=style)
+        queue.put({"success": True, "clip_path": clip_path})
+    except Exception as e:
+        queue.put({"success": False, "error": str(e), "traceback": traceback.format_exc()})
 
 def handler(job):
     job_input = job.get("input", {})
@@ -12,8 +21,23 @@ def handler(job):
         return {"error": "Missing video_url"}
         
     try:
-        # Generate the clip
-        clip_path = run_clipper(video_url, client_title=client_title, style=style)
+        print(f"Starting clipper process for {video_url}...")
+        
+        # Use multiprocessing to prevent C-level segfaults from killing the worker
+        ctx = multiprocessing.get_context('spawn')
+        q = ctx.Queue()
+        p = ctx.Process(target=clipper_process_wrapper, args=(q, video_url, client_title, style))
+        p.start()
+        p.join()
+        
+        if p.exitcode != 0:
+            return {"error": f"Worker process crashed fatally with exit code {p.exitcode}. This usually indicates a Segmentation Fault or Out of Memory error in C-extensions (like OpenCV, FFmpeg, or Faster-Whisper)."}
+            
+        result = q.get()
+        if not result.get("success"):
+            return {"error": result.get("error"), "traceback": result.get("traceback")}
+            
+        clip_path = result.get("clip_path")
         
         # Upload to Catbox for public URL
         print(f"Uploading {clip_path} to Catbox...")
@@ -38,7 +62,6 @@ def handler(job):
             "public_url": public_url
         }
     except Exception as e:
-        import traceback
         print(traceback.format_exc())
         return {"error": str(e)}
 
