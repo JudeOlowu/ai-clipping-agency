@@ -46,11 +46,14 @@ def resolve_font(font_name: str):
     return None  # triggers ImageFont.load_default() fallback
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Setup OpenRouter (using OpenAI SDK)
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_openai_client():
+    """Lazy load OpenAI client to avoid import-time crashes if environment variables are delayed."""
+    return OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY", "dummy-key-to-prevent-crash"),
+    )
 
 def download_video(url: str, output_path: str = "temp_video.mp4") -> str:
     """Downloads a YouTube video to a local mp4 file using yt-dlp."""
@@ -173,8 +176,8 @@ def find_viral_clip(segments: list, client_title: str = "") -> tuple:
     """
     
     try:
-        response = client.chat.completions.create(
-            model="openai/gpt-4o",
+        response = get_openai_client().chat.completions.create(
+            model="meta-llama/llama-3.3-70b-instruct", # A solid open-weights model on OpenRouter
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0
         )
@@ -480,7 +483,7 @@ def detect_existing_subtitles(video_path: str) -> bool:
         img.save(buffered, format="JPEG")
         img_str = base64.b64encode(buffered.getvalue()).decode()
         
-        response = client.chat.completions.create(
+        response = get_openai_client().chat.completions.create(
             model="openai/gpt-4o",
             messages=[
                 {
