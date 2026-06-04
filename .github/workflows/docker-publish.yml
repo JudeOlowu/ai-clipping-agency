@@ -38,5 +38,5 @@ jobs:
           context: .
           file: Dockerfile.worker
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:main,ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
