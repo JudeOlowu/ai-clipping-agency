@@ -1,4 +1,5 @@
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+# Use the official CUDA 12 base image, since faster-whisper (CTranslate2) requires libcublas.so.12
+FROM nvidia/cuda:12.2.2-cudnn8-runtime-ubuntu22.04
 
 # Avoid tzdata interactive prompt
 ENV DEBIAN_FRONTEND=noninteractive
