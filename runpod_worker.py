@@ -3,8 +3,10 @@ import os
 import multiprocessing
 import traceback
 
-def clipper_process_wrapper(queue, video_url, client_title, style):
+def clipper_process_wrapper(queue, video_url, client_title, style, api_key):
     try:
+        if api_key:
+            os.environ["OPENROUTER_API_KEY"] = api_key
         from clipper_agent import run_clipper
         clip_path = run_clipper(video_url, client_title=client_title, style=style)
         queue.put({"success": True, "clip_path": clip_path})
@@ -16,6 +18,7 @@ def handler(job):
     video_url = job_input.get("video_url")
     style = job_input.get("style", "DEFAULT")
     client_title = job_input.get("client_title", "")
+    api_key = job_input.get("api_key", "")
     
     if not video_url:
         return {"error": "Missing video_url"}
@@ -26,7 +29,7 @@ def handler(job):
         # Use multiprocessing to prevent C-level segfaults from killing the worker
         ctx = multiprocessing.get_context('spawn')
         q = ctx.Queue()
-        p = ctx.Process(target=clipper_process_wrapper, args=(q, video_url, client_title, style))
+        p = ctx.Process(target=clipper_process_wrapper, args=(q, video_url, client_title, style, api_key))
         p.start()
         p.join()
         
