@@ -1,7 +1,6 @@
 import runpod
 import os
 from clipper_agent import run_clipper
-from uploader import upload_video
 
 def handler(job):
     job_input = job.get("input", {})
