@@ -73,6 +73,7 @@ def download_video(url: str, output_path: str = "temp_video.mp4") -> str:
         'quiet': False,
         'playlist_items': '1',           # Prevent downloading entire channels/playlists
         'ffmpeg_location': ffmpeg_path,  # Point yt-dlp to the bundled ffmpeg binary
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}, # Bypass Bot Check
     }
     
     if os.path.exists("cookies.txt"):
@@ -94,6 +95,33 @@ def download_video(url: str, output_path: str = "temp_video.mp4") -> str:
         raise Exception(f"yt-dlp finished but {output_path} was not created.")
         
     print(f"--> Downloaded to {output_path}")
+    
+    # Pre-process with FFmpeg to strip metadata and chapters (fixes MoviePy IndexError on complex MP4s)
+    stripped_path = f"stripped_{os.path.basename(output_path)}"
+    print(f"--> Stripping metadata to prevent MoviePy crashes...")
+    import subprocess
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-i", output_path,
+        "-map", "0:v?",
+        "-map", "0:a?",
+        "-c", "copy",
+        "-dn",  # Disable data streams
+        "-sn",  # Disable subtitle streams
+        "-map_metadata", "-1", # Remove global metadata
+        "-map_chapters", "-1",  # Remove chapters
+        stripped_path
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.replace(stripped_path, output_path)
+        print("--> Metadata stripped successfully.")
+    except Exception as e:
+        print(f"--> Warning: Failed to strip metadata. Proceeding with original file. Error: {e}")
+        if os.path.exists(stripped_path):
+            os.remove(stripped_path)
+
     return output_path
 
 def transcribe_video(video_path: str):
