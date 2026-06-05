@@ -500,56 +500,6 @@ def apply_template(style: str, video_path: str, start_time: float, end_time: flo
     else:
         create_default_clip(video_path, start_time, end_time, output_path, segments, font_color, font_name)
 
-def detect_existing_subtitles(video_path: str) -> bool:
-    """Extracts a frame from the middle of the video and uses GPT-4o Vision to check for hardcoded subtitles."""
-    print("Checking video for existing hardcoded subtitles via OCR...")
-    try:
-        clip = VideoFileClip(video_path)
-        mid_time = clip.duration / 2
-        frame = clip.get_frame(mid_time)
-        clip.close()
-        
-        img = Image.fromarray(frame)
-        import base64
-        from io import BytesIO
-        buffered = BytesIO()
-        # Resize to save bandwidth
-        img.thumbnail((512, 512))
-        img.save(buffered, format="JPEG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
-        
-        response = get_openai_client().chat.completions.create(
-            model="openai/gpt-4o",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Does this video frame contain large, centered, word-by-word rolling subtitles (like TikTok captions) spanning across the middle or bottom? Ignore small text, channel logos, lower-thirds, or background text. Reply with ONLY 'true' if there are massive video captions, or 'false' if there are none."},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{img_str}",
-                                "detail": "low"
-                            }
-                        }
-                    ]
-                }
-            ],
-            max_tokens=10,
-            temperature=0.0
-        )
-        
-        result = response.choices[0].message.content.strip().lower()
-        if 'true' in result:
-            print("--> AI detected existing subtitles! Skipping subtitle generation to prevent overlap.")
-            return True
-        else:
-            print("--> No existing subtitles detected. We will generate our own.")
-            return False
-    except Exception as e:
-        print(f"--> OCR Error: {e}")
-        return False
-
 def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", force_no_subs: bool = False, custom_instructions: str = ""):
     print(f"Starting Fully Local Clipper Agent Pipeline... (Style: {style})")
     output_dir = "output_clips"
@@ -558,10 +508,11 @@ def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", 
     temp_video = download_video(video_url)
     
     if force_no_subs:
-        print("--> User requested NO SUBTITLES via --no-subs flag. Skipping AI subtitle detection/generation.")
+        print("--> User requested NO SUBTITLES via dashboard toggle. Skipping subtitle generation.")
         has_subtitles = True
     else:
-        has_subtitles = detect_existing_subtitles(temp_video)
+        print("--> User requested subtitles via dashboard. Generating subtitles.")
+        has_subtitles = False
 
     print("--> Extracting audio and transcribing via local Whisper model...")
     segments = transcribe_video(temp_video)
@@ -594,3 +545,4 @@ if __name__ == "__main__":
             video_url = "https://youtu.be/7Ff09Qgmgnw?si=JW9LCg7Y-f_ozlP4"
     
     run_clipper(video_url, style=style, force_no_subs=force_no_subs)
+

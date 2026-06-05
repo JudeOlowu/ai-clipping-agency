@@ -45,7 +45,7 @@ def extract_lead_info(title: str, text: str) -> dict:
     
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-4o",
+            model="meta-llama/llama-3.3-70b-instruct",
             messages=[{"role": "user", "content": prompt}],
             response_format={ "type": "json_object" },
             temperature=0.0
@@ -77,7 +77,7 @@ def draft_proposal(title: str, text: str, video_path: str = None) -> str:
     """
     try:
         response = client.chat.completions.create(
-            model="openai/gpt-4o",
+            model="meta-llama/llama-3.3-70b-instruct",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=150,
             temperature=0.7
@@ -185,7 +185,19 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                             try:
                                 # Use runsync so we wait for the GPU to finish returning the URL before pitching
                                 url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
-                                rp_res = requests.post(url, json=payload, headers=headers).json()
+                                
+                                rp_res = None
+                                for attempt in range(5):
+                                    try:
+                                        rp_res = requests.post(url, json=payload, headers=headers, timeout=120).json()
+                                        break
+                                    except Exception as e:
+                                        print(f"--> RunPod submission attempt {attempt+1} failed: {e}. Retrying in 5 seconds...")
+                                        import time
+                                        time.sleep(5)
+                                        
+                                if not rp_res:
+                                    raise Exception("Failed to contact RunPod API after 5 attempts due to network instability")
                                 
                                 job_id = rp_res.get("id")
                                 status = rp_res.get("status")
