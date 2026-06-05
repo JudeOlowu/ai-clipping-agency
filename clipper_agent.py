@@ -187,10 +187,17 @@ def find_viral_clip(segments: list, client_title: str = "", custom_instructions:
         context_instruction += f"DIRECTOR'S NOTES (USER INSTRUCTIONS): {custom_instructions}\\nYOU MUST PRIORITIZE THESE EXACT INSTRUCTIONS WHEN SELECTING THE CLIP TIMESTAMP!\\n"
         
     prompt = f"""
-    You are an expert short-form video editor specialized in TikTok, Reels, and Shorts.
+    You are an expert short-form video editor specialized in TikTok, Reels, and Shorts, targeting a Tier-1 US Audience.
     Read the following timestamped transcript of a video.
-    Identify the absolute best, most punchy and viral 30 to 45 second segment. It should have a strong hook and clear topic.
-    CRITICAL: You MUST select a highly engaging snippet that is STRICTLY between 30 and 45 seconds long. If the clip is less than 25 seconds, it is too short and will be rejected. Do NOT just select the entire video. Cut out the fluff and find the core message.
+    Identify the absolute best, most punchy and viral 20 to 35 second segment. It should have a strong hook and clear topic.
+    
+    TIER-1 DEMOGRAPHIC FILTER (CRITICAL):
+    You are editing for an American/Tier-1 audience. You MUST prioritize timestamps that feature:
+    1. Massive global superstars (e.g., Messi, Mbappe, Ronaldo) or popular Premier League stars.
+    2. High-drama moments (e.g., crazy goals, red cards, referee controversies, coach reactions).
+    Avoid slow, dry tactical breakdowns. The hook must start exactly 1 second before the climax of the action!
+    
+    CRITICAL: You MUST select a highly engaging snippet that is STRICTLY between 20 and 35 seconds long to maximize the YouTube algorithm's Completion Rate and Replayability. If the clip is less than 20 seconds, it is too short. Cut out the fluff and find the core message.
     {context_instruction}
     
     You must also determine the best subtitle aesthetic based on the video's vibe.
@@ -500,6 +507,33 @@ def apply_template(style: str, video_path: str, start_time: float, end_time: flo
     else:
         create_default_clip(video_path, start_time, end_time, output_path, segments, font_color, font_name)
 
+def americanize_transcript(segments: list) -> list:
+    """Translates British football terminology to American English for Tier-1 demographic targeting."""
+    translations = {
+        "football": "soccer",
+        "footballer": "soccer player",
+        "pitch": "field",
+        "boots": "cleats",
+        "draw": "tie",
+        "manager": "coach",
+        "fixture": "game",
+        "kit": "jersey"
+    }
+    for s in segments:
+        text = s.get("text", "")
+        # Very simple case-insensitive replacement
+        for uk_term, us_term in translations.items():
+            # Replace lowercase
+            text = text.replace(f" {uk_term} ", f" {us_term} ")
+            text = text.replace(f" {uk_term}.", f" {us_term}.")
+            text = text.replace(f" {uk_term},", f" {us_term},")
+            # Replace Title Case
+            text = text.replace(f" {uk_term.title()} ", f" {us_term.title()} ")
+            text = text.replace(f" {uk_term.title()}.", f" {us_term.title()}.")
+            text = text.replace(f" {uk_term.title()},", f" {us_term.title()},")
+        s["text"] = text
+    return segments
+
 def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", force_no_subs: bool = False, custom_instructions: str = ""):
     print(f"Starting Fully Local Clipper Agent Pipeline... (Style: {style})")
     output_dir = "output_clips"
@@ -516,6 +550,9 @@ def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", 
 
     print("--> Extracting audio and transcribing via local Whisper model...")
     segments = transcribe_video(temp_video)
+    
+    print('--> Applying Tier-1 Demographic Translation (UK -> US English)...')
+    segments = americanize_transcript(segments)
 
     start_time, end_time, font_color, font_name = find_viral_clip(segments, client_title, custom_instructions)
 
