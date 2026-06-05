@@ -3,12 +3,12 @@ import os
 import multiprocessing
 import traceback
 
-def clipper_process_wrapper(queue, video_url, client_title, style, api_key, generate_subtitles):
+def clipper_process_wrapper(queue, video_url, client_title, style, api_key, generate_subtitles, custom_instructions):
     try:
         if api_key:
             os.environ["OPENROUTER_API_KEY"] = api_key
         from clipper_agent import run_clipper
-        clip_path = run_clipper(video_url, client_title=client_title, style=style, force_no_subs=not generate_subtitles)
+        clip_path = run_clipper(video_url, client_title=client_title, style=style, force_no_subs=not generate_subtitles, custom_instructions=custom_instructions)
         queue.put({"success": True, "clip_path": clip_path})
     except Exception as e:
         queue.put({"success": False, "error": str(e), "traceback": traceback.format_exc()})
@@ -20,17 +20,20 @@ def handler(job):
     client_title = job_input.get("client_title", "")
     api_key = job_input.get("api_key", "")
     generate_subtitles = job_input.get("generateSubtitles", True)
+    custom_instructions = job_input.get("customInstructions", "")
     
     if not video_url:
         return {"error": "Missing video_url"}
         
     try:
         print(f"Starting clipper process for {video_url}...")
+        if custom_instructions:
+            print(f"--> Director's Notes: {custom_instructions}")
         
         # Use multiprocessing to prevent C-level segfaults from killing the worker
         ctx = multiprocessing.get_context('spawn')
         q = ctx.Queue()
-        p = ctx.Process(target=clipper_process_wrapper, args=(q, video_url, client_title, style, api_key, generate_subtitles))
+        p = ctx.Process(target=clipper_process_wrapper, args=(q, video_url, client_title, style, api_key, generate_subtitles, custom_instructions))
         p.start()
         p.join()
         

@@ -21,6 +21,7 @@ function App() {
   const [manualUrl, setManualUrl] = useState("");
   const [manualStyle, setManualStyle] = useState("DEFAULT");
   const [generateSubtitles, setGenerateSubtitles] = useState(true);
+  const [customInstructions, setCustomInstructions] = useState("");
   const [manualLoading, setManualLoading] = useState(false);
   
   const [activeTab, setActiveTab] = useState<'CRM' | 'GALLERY'>('CRM');
@@ -100,7 +101,7 @@ function App() {
       const res = await fetch('/api/manual-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: manualUrl, style: manualStyle, generateSubtitles })
+        body: JSON.stringify({ url: manualUrl, style: manualStyle, generateSubtitles, customInstructions })
       });
       const data = await res.json();
       if (data.success) {
@@ -178,6 +179,15 @@ function App() {
               value={manualUrl} 
               onChange={e => setManualUrl(e.target.value)} 
               placeholder="Paste YouTube or X URL here..." 
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent text-white placeholder-gray-500 transition-all outline-none" 
+            />
+            
+            <label className="block text-xs uppercase tracking-wider text-muted mb-2 mt-4 font-semibold">Director's Notes (Optional)</label>
+            <input 
+              type="text" 
+              value={customInstructions} 
+              onChange={e => setCustomInstructions(e.target.value)} 
+              placeholder="e.g. 'Only include the first 30 seconds' or 'Make sure to keep the joke at 1:45'" 
               className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent text-white placeholder-gray-500 transition-all outline-none" 
             />
           </div>

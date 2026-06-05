@@ -170,7 +170,7 @@ def transcribe_video(video_path: str):
     return segments
 
 
-def find_viral_clip(segments: list, client_title: str = "") -> tuple:
+def find_viral_clip(segments: list, client_title: str = "", custom_instructions: str = "") -> tuple:
     """Uses OpenRouter to analyze the transcript and select the best 30-60s clip based on client context."""
     print("Analyzing transcript with AI to find the most viral segment...")
     
@@ -182,7 +182,9 @@ def find_viral_clip(segments: list, client_title: str = "") -> tuple:
     
     context_instruction = ""
     if client_title:
-        context_instruction = f"IMPORTANT: The client specifically requested the following: '{client_title}'. Please prioritize a segment that directly addresses this topic or niche!"
+        context_instruction += f"IMPORTANT: The client specifically requested the following topic: '{client_title}'. Please prioritize a segment that directly addresses this topic or niche!\\n"
+    if custom_instructions:
+        context_instruction += f"DIRECTOR'S NOTES (USER INSTRUCTIONS): {custom_instructions}\\nYOU MUST PRIORITIZE THESE EXACT INSTRUCTIONS WHEN SELECTING THE CLIP TIMESTAMP!\\n"
         
     prompt = f"""
     You are an expert short-form video editor specialized in TikTok, Reels, and Shorts.
@@ -548,7 +550,7 @@ def detect_existing_subtitles(video_path: str) -> bool:
         print(f"--> OCR Error: {e}")
         return False
 
-def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", force_no_subs: bool = False):
+def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", force_no_subs: bool = False, custom_instructions: str = ""):
     print(f"Starting Fully Local Clipper Agent Pipeline... (Style: {style})")
     output_dir = "output_clips"
     os.makedirs(output_dir, exist_ok=True)
@@ -564,7 +566,7 @@ def run_clipper(video_url: str, client_title: str = "", style: str = "DEFAULT", 
     print("--> Extracting audio and transcribing via local Whisper model...")
     segments = transcribe_video(temp_video)
 
-    start_time, end_time, font_color, font_name = find_viral_clip(segments, client_title)
+    start_time, end_time, font_color, font_name = find_viral_clip(segments, client_title, custom_instructions)
 
     output_filename = f"{output_dir}/viral_clip_{int(time.time())}.mp4"
     

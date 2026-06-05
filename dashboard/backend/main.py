@@ -186,6 +186,7 @@ class ManualClipRequest(BaseModel):
     url: str
     style: str
     generateSubtitles: bool = True
+    customInstructions: str = ""
 
 
 
@@ -205,14 +206,26 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
             "video_url": req.url,
             "style": req.style,
             "generateSubtitles": req.generateSubtitles,
+            "customInstructions": req.customInstructions,
             "api_key": os.getenv("OPENROUTER_API_KEY", "")
         }
     }
     url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/runsync"
     try:
         print(f"Waiting for RunPod to finish manual clip for {req.url}...")
-        response = requests.post(url, json=payload, headers=headers).json()
         
+        response = None
+        for attempt in range(5):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=120).json()
+                break
+            except Exception as e:
+                print(f"RunPod submission attempt {attempt+1} failed: {e}. Retrying in 5 seconds...")
+                time.sleep(5)
+                
+        if not response:
+            raise Exception("Failed to contact RunPod API after 5 attempts due to network instability")
+            
         job_id = response.get("id")
         status = response.get("status")
         
