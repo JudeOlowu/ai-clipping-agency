@@ -10,6 +10,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from uploader import upload_video
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"))
+
 app = FastAPI()
 
 OUTPUT_CLIPS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "output_clips")
@@ -213,12 +216,22 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
         job_id = response.get("id")
         status = response.get("status")
         
+        def robust_get(url, headers, max_retries=5):
+            import time
+            for i in range(max_retries):
+                try:
+                    return requests.get(url, headers=headers).json()
+                except Exception as e:
+                    print(f"Network error: {e}. Retrying in 5 seconds...")
+                    time.sleep(5)
+            raise Exception("Max retries exceeded")
+
         # If it takes longer than 90 seconds, runsync returns IN_PROGRESS, so we poll
         while status in ["IN_QUEUE", "IN_PROGRESS"]:
             print(f"Job {job_id} is {status}, waiting 10s...")
             time.sleep(10)
             status_url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/status/{job_id}"
-            response = requests.get(status_url, headers=headers).json()
+            response = robust_get(status_url, headers)
             status = response.get("status")
         
         if status == "COMPLETED":
@@ -227,7 +240,19 @@ def process_manual_clip_runpod(req: ManualClipRequest, runpod_api_key: str, runp
                 public_url = output.get("public_url")
                 print(f"RunPod finished! Downloading {public_url} to gallery...")
                 
-                video_data = requests.get(public_url).content
+                video_data = None
+                dl_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                for attempt in range(5):
+                    try:
+                        video_data = requests.get(public_url, headers=dl_headers, timeout=60).content
+                        break
+                    except Exception as e:
+                        print(f"Download attempt {attempt+1} failed: {e}. Retrying in 5 seconds...")
+                        time.sleep(5)
+                
+                if not video_data:
+                    raise Exception("Failed to download video from Catbox after 5 attempts")
+                    
                 filename = f"manual_clip_{int(time.time())}.mp4"
                 filepath = os.path.join(output_dir, filename)
                 

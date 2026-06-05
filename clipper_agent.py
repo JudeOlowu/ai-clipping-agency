@@ -228,6 +228,11 @@ def find_viral_clip(segments: list, client_title: str = "") -> tuple:
             print(f"--> AI chose a {end_time - start_time}s clip! Truncating to 45s for faster rendering.")
             end_time = start_time + 45.0
             
+        # Enforce min 20 seconds so we don't get useless 4-second clips
+        if end_time - start_time < 20.0:
+            print(f"--> AI chose a {end_time - start_time}s clip which is too short! Expanding to 30s.")
+            end_time = start_time + 30.0
+            
         print(f"--> AI selected viral clip from {start_time}s to {end_time}s")
         print(f"--> AI selected branding: {font_color} text with {font_name} font")
         return start_time, end_time, font_color, font_name

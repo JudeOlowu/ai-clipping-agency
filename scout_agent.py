@@ -190,13 +190,23 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                                 job_id = rp_res.get("id")
                                 status = rp_res.get("status")
                                 
+                                def robust_get(url, headers, max_retries=5):
+                                    import time
+                                    for i in range(max_retries):
+                                        try:
+                                            return requests.get(url, headers=headers).json()
+                                        except Exception as e:
+                                            print(f"Network error: {e}. Retrying in 5 seconds...")
+                                            time.sleep(5)
+                                    raise Exception("Max retries exceeded")
+
                                 # If it takes longer than 90 seconds, runsync returns IN_PROGRESS, so we poll
                                 while status in ["IN_QUEUE", "IN_PROGRESS"]:
                                     print(f"--> Job {job_id} is {status}, waiting 10s...")
                                     import time
                                     time.sleep(10)
                                     status_url = f"https://api.runpod.ai/v2/{runpod_endpoint_id}/status/{job_id}"
-                                    rp_res = requests.get(status_url, headers=headers).json()
+                                    rp_res = robust_get(status_url, headers)
                                     status = rp_res.get("status")
                                 
                                 if status == "COMPLETED":
@@ -207,7 +217,19 @@ def run_scout(subreddits=["CreatorServices", "YouTubeEditors", "HireAnEditor", "
                                         
                                         print("--> Downloading video from Catbox to local system...")
                                         import time
-                                        video_data = requests.get(public_url).content
+                                        video_data = None
+                                        dl_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                                        for attempt in range(5):
+                                            try:
+                                                video_data = requests.get(public_url, headers=dl_headers, timeout=60).content
+                                                break
+                                            except Exception as e:
+                                                print(f"--> Download attempt {attempt+1} failed: {e}. Retrying in 5 seconds...")
+                                                time.sleep(5)
+                                        
+                                        if not video_data:
+                                            raise Exception("Failed to download video from Catbox after 5 attempts")
+                                            
                                         local_filename = os.path.join("output_clips", f"runpod_clip_{int(time.time())}.mp4")
                                         os.makedirs("output_clips", exist_ok=True)
                                         with open(local_filename, "wb") as f:
