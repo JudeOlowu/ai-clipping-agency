@@ -6,7 +6,7 @@ echo ===================================================
 echo.
 
 echo [1/3] Starting Backend (FastAPI)...
-start "Agency Backend" cmd /c "cd dashboard\backend && uvicorn main:app --host 0.0.0.0 --port 8000"
+start "Agency Backend" cmd /c "cd dashboard\backend && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
 echo [2/3] Starting Frontend (React)...
 start "Agency Frontend" cmd /c "cd dashboard\frontend && npm run dev"

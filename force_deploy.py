@@ -6,6 +6,7 @@ API_KEY = os.getenv('RUNPOD_API_KEY')
 ENDPOINT_ID = os.getenv('RUNPOD_ENDPOINT_ID')
 url = 'https://api.runpod.io/graphql'
 headers = {'Authorization': f'Bearer {API_KEY}', 'Content-Type': 'application/json'}
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 
 import time
 import subprocess
@@ -46,28 +47,9 @@ print('Create Template Response:', res)
 new_template_id = res['data']['saveTemplate']['id']
 
 # 2. Update Endpoint to use new Template
-update_query = f"""
-mutation {{
-    saveEndpoint(
-        input: {{
-            id: "{ENDPOINT_ID}",
-            name: "AI-Clipping-Agency-Endpoint",
-            templateId: "{new_template_id}",
-            gpuIds: "AMPERE_16,AMPERE_24,ADA_24",
-            networkVolumeId: "",
-            locations: "EU-RO-1,US-KS-1,US-KS-2",
-            idleTimeout: 5,
-            scalerType: "QUEUE_DELAY",
-            scalerValue: 2,
-            workersMin: 0,
-            workersMax: 3
-        }}
-    ) {{
-        id
-        name
-    }}
-}}
-"""
-print("Updating endpoint to use new template...")
-res2 = requests.post(url, json={'query': update_query}, headers=headers).json()
-print('Update Endpoint Response:', res2)
+print(f"Updating endpoint {ENDPOINT_ID} to use new template {new_template_id}...")
+import runpod
+runpod.api_key = API_KEY
+runpod.update_endpoint_template(ENDPOINT_ID, new_template_id)
+print("Endpoint template successfully updated via Python SDK!")
+
