@@ -15,6 +15,47 @@ def clipper_process_wrapper(queue, video_url, client_title, style, api_key, gene
 
 def handler(job):
     job_input = job.get("input", {})
+    job_type = job_input.get("job_type", "shortform")
+    
+    if job_type == "longform_assembly":
+        zip_url = job_input.get("zip_url")
+        if not zip_url:
+            return {"error": "Missing zip_url for longform assembly"}
+            
+        try:
+            print(f"Starting longform assembly process...")
+            ctx = multiprocessing.get_context('spawn')
+            q = ctx.Queue()
+            import subprocess
+            p = ctx.Process(target=longform_process_wrapper, args=(q, zip_url))
+            p.start()
+            p.join()
+            
+            if p.exitcode != 0:
+                return {"error": f"Worker crashed with exit code {p.exitcode}."}
+                
+            result = q.get()
+            if not result.get("success"):
+                return {"error": result.get("error"), "traceback": result.get("traceback")}
+                
+            clip_path = result.get("clip_path")
+            print(f"Uploading final documentary {clip_path} to Catbox...")
+            import requests
+            url = "https://catbox.moe/user/api.php"
+            with open(clip_path, 'rb') as f:
+                data = {'reqtype': 'fileupload'}
+                files = {'fileToUpload': f}
+                response = requests.post(url, data=data, files=files)
+                
+            if response.status_code == 200:
+                public_url = response.text
+                return {"success": True, "public_url": public_url}
+            else:
+                return {"error": f"Catbox upload failed: {response.text}"}
+        except Exception as e:
+            return {"error": str(e), "traceback": traceback.format_exc()}
+            
+    # Default shortform handler logic
     video_url = job_input.get("video_url")
     style = job_input.get("style", "DEFAULT")
     client_title = job_input.get("client_title", "")
@@ -71,6 +112,127 @@ def handler(job):
     except Exception as e:
         print(traceback.format_exc())
         return {"error": str(e)}
+
+def get_audio_duration(filepath):
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        filepath
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    return float(res.stdout.strip())
+
+def longform_process_wrapper(queue, zip_url):
+    try:
+        import zipfile
+        import requests
+        
+        work_dir = "/app/wework_temp"
+        print(f"Downloading assets from {zip_url}...")
+        os.makedirs(work_dir, exist_ok=True)
+        zip_path = os.path.join(work_dir, "assets.zip")
+        
+        r = requests.get(zip_url, stream=True)
+        if r.status_code == 200:
+            with open(zip_path, 'wb') as f:
+                for chunk in r.iter_content(1024):
+                    f.write(chunk)
+        else:
+            raise Exception(f"Failed to download zip from {zip_url}. Status: {r.status_code}")
+            
+        print("Extracting assets...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(work_dir)
+            
+        audio_path = os.path.join(work_dir, "longform_voiceover.mp3")
+        drone_audio = os.path.join(work_dir, "cinematic_drone.wav")
+        
+        if not os.path.exists(audio_path):
+            raise Exception("Missing longform_voiceover.mp3 in zip payload")
+        
+        if not os.path.exists(drone_audio):
+            fallback = "/app/wework_assets/cinematic_drone.wav"
+            if os.path.exists(fallback):
+                drone_audio = fallback
+            else:
+                raise Exception("Missing cinematic_drone.wav")
+
+        print("[2/3] Preparing video sequences...")
+        duration = get_audio_duration(audio_path)
+        print(f"  Total Audio Duration: {duration:.2f}s")
+        
+        segment_duration = 15.0
+        num_segments = int(duration / segment_duration) + 1
+        
+        assets = []
+        for f in sorted(os.listdir(work_dir)):
+            if f.endswith(".jpg") or f.endswith(".png") or f.endswith(".mp4"):
+                if "raw_video.mp4" not in f and "final" not in f:
+                    assets.append(f)
+                    
+        if not assets:
+            raise Exception("No image/video assets found in zip to assemble!")
+            
+        clip_files = []
+        for i in range(num_segments):
+            asset = assets[i % len(assets)]
+            asset_path = os.path.join(work_dir, asset)
+            out_clip = os.path.join(work_dir, f"long_clip_{i}.mp4")
+            
+            if asset.endswith(".mp4"):
+                cmd = [
+                    "ffmpeg", "-y", "-stream_loop", "-1", "-i", asset_path,
+                    "-t", str(segment_duration),
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    out_clip
+                ]
+            else:
+                cmd = [
+                    "ffmpeg", "-y", "-loop", "1", "-i", asset_path,
+                    "-t", str(segment_duration),
+                    "-filter_complex",
+                    "scale=8000:-1,zoompan=z='min(zoom+0.0005,1.5)':d=1500:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',scale=1920:1080,format=yuv420p",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    out_clip
+                ]
+                
+            print(f"  Generating sequence {i+1}/{num_segments} from {asset}...")
+            import subprocess
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            clip_files.append(out_clip)
+            
+        print("  Concatenating visual sequences...")
+        concat_txt = os.path.join(work_dir, "video_concat.txt")
+        with open(concat_txt, "w") as f:
+            for cf in clip_files:
+                f.write(f"file '{os.path.basename(cf)}'\n")
+                
+        raw_video = os.path.join(work_dir, "raw_video.mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", concat_txt, "-c", "copy", raw_video
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        print("[3/3] Final Mixing...")
+        final_out = os.path.join(work_dir, "wework_longform_final.mp4")
+        mix_cmd = [
+            "ffmpeg", "-y",
+            "-i", raw_video,
+            "-i", audio_path,
+            "-stream_loop", "-1", "-i", drone_audio,
+            "-filter_complex", "[1:a]volume=1.0[a1];[2:a]volume=0.2[a2];[a1][a2]amix=inputs=2:duration=first:dropout_transition=2[a]",
+            "-map", "0:v", "-map", "[a]",
+            "-c:v", "copy",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(duration + 1.5),
+            final_out
+        ]
+        subprocess.run(mix_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        queue.put({"success": True, "clip_path": final_out})
+    except Exception as e:
+        queue.put({"success": False, "error": str(e), "traceback": traceback.format_exc()})
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": handler})
