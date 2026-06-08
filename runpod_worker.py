@@ -183,13 +183,14 @@ def longform_process_wrapper(queue, zip_url):
         success = False
         for attempt in range(3):
             try:
-                import subprocess
-                res = subprocess.run(["wget", "--timeout=30", "-O", zip_path, zip_url], capture_output=True)
-                if res.returncode == 0:
+                r = requests.get(zip_url, headers=headers, timeout=60)
+                if r.status_code == 200:
+                    with open(zip_path, 'wb') as f:
+                        f.write(r.content)
                     success = True
                     break
                 else:
-                    print(f"Attempt {attempt+1} failed: {res.stderr.decode()}")
+                    print(f"Attempt {attempt+1}: Status {r.status_code}")
             except Exception as e:
                 print(f"Attempt {attempt+1} exception: {e}")
                 time.sleep(3)
