@@ -40,19 +40,48 @@ def handler(job):
                 return {"error": result.get("error"), "traceback": result.get("traceback")}
                 
             clip_path = result.get("clip_path")
-            print(f"Uploading final documentary {clip_path} to Catbox...")
+            print(f"Uploading final documentary {clip_path}...")
             import requests
-            url = "https://catbox.moe/user/api.php"
-            with open(clip_path, 'rb') as f:
-                data = {'reqtype': 'fileupload'}
-                files = {'fileToUpload': f}
-                response = requests.post(url, data=data, files=files)
+            public_url = None
+            
+            # Provider 1: Catbox
+            try:
+                print("Trying Catbox...")
+                url = "https://catbox.moe/user/api.php"
+                with open(clip_path, 'rb') as f:
+                    response = requests.post(url, data={'reqtype': 'fileupload'}, files={'fileToUpload': f}, timeout=60)
+                if response.status_code == 200 and response.text.startswith("https://"):
+                    public_url = response.text
+            except Exception as e:
+                print(f"Catbox failed: {e}")
                 
-            if response.status_code == 200:
-                public_url = response.text
+            # Provider 2: Tmpfiles
+            if not public_url:
+                try:
+                    print("Trying Tmpfiles...")
+                    url = "https://tmpfiles.org/api/v1/upload"
+                    with open(clip_path, 'rb') as f:
+                        response = requests.post(url, files={'file': f}, timeout=60).json()
+                    if response.get('status') == 'success':
+                        public_url = response['data']['url'].replace("tmpfiles.org/", "tmpfiles.org/dl/")
+                except Exception as e:
+                    print(f"Tmpfiles failed: {e}")
+                    
+            # Provider 3: File.io
+            if not public_url:
+                try:
+                    print("Trying File.io...")
+                    with open(clip_path, 'rb') as f:
+                        response = requests.post("https://file.io", files={'file': f}, timeout=60).json()
+                    if response.get("success"):
+                        public_url = response.get("link")
+                except Exception as e:
+                    print(f"File.io failed: {e}")
+
+            if public_url:
                 return {"success": True, "public_url": public_url}
             else:
-                return {"error": f"Catbox upload failed: {response.text}"}
+                return {"error": "All upload providers failed or timed out."}
         except Exception as e:
             return {"error": str(e), "traceback": traceback.format_exc()}
             
@@ -89,27 +118,41 @@ def handler(job):
         clip_path = result.get("clip_path")
         
         # Upload to Catbox for public URL
-        print(f"Uploading {clip_path} to Catbox...")
+        print(f"Uploading {clip_path}...")
         import requests
-        url = "https://catbox.moe/user/api.php"
-        with open(clip_path, 'rb') as f:
-            data = {'reqtype': 'fileupload'}
-            files = {'fileToUpload': f}
-            response = requests.post(url, data=data, files=files)
-            
-        if response.status_code == 200:
-            public_url = response.text
-        else:
-            raise Exception(f"Catbox upload failed: {response.text}")
+        public_url = None
         
-        # Clean up local file
-        if os.path.exists(clip_path):
-            os.remove(clip_path)
+        try:
+            print("Trying Catbox...")
+            url = "https://catbox.moe/user/api.php"
+            with open(clip_path, 'rb') as f:
+                response = requests.post(url, data={'reqtype': 'fileupload'}, files={'fileToUpload': f}, timeout=60)
+            if response.status_code == 200 and response.text.startswith("https://"):
+                public_url = response.text
+        except Exception as e:
+            print(f"Catbox failed: {e}")
             
-        return {
-            "success": True,
-            "public_url": public_url
-        }
+        if not public_url:
+            try:
+                print("Trying Tmpfiles...")
+                url = "https://tmpfiles.org/api/v1/upload"
+                with open(clip_path, 'rb') as f:
+                    response = requests.post(url, files={'file': f}, timeout=60).json()
+                if response.get('status') == 'success':
+                    public_url = response['data']['url'].replace("tmpfiles.org/", "tmpfiles.org/dl/")
+            except Exception as e:
+                print(f"Tmpfiles failed: {e}")
+
+        if public_url:
+            # Clean up local file
+            if os.path.exists(clip_path):
+                os.remove(clip_path)
+            return {
+                "success": True,
+                "public_url": public_url
+            }
+        else:
+            raise Exception("All upload providers failed or timed out.")
     except Exception as e:
         print(traceback.format_exc())
         return {"error": str(e)}
