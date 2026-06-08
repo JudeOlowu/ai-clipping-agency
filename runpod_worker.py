@@ -133,13 +133,28 @@ def longform_process_wrapper(queue, zip_url):
         os.makedirs(work_dir, exist_ok=True)
         zip_path = os.path.join(work_dir, "assets.zip")
         
-        r = requests.get(zip_url, stream=True)
-        if r.status_code == 200:
-            with open(zip_path, 'wb') as f:
-                for chunk in r.iter_content(1024):
-                    f.write(chunk)
-        else:
-            raise Exception(f"Failed to download zip from {zip_url}. Status: {r.status_code}")
+        import time
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        
+        success = False
+        for attempt in range(3):
+            try:
+                r = requests.get(zip_url, stream=True, headers=headers, timeout=60)
+                if r.status_code == 200:
+                    with open(zip_path, 'wb') as f:
+                        for chunk in r.iter_content(8192):
+                            if chunk:
+                                f.write(chunk)
+                    success = True
+                    break
+                else:
+                    print(f"Attempt {attempt+1}: Status {r.status_code}")
+            except Exception as e:
+                print(f"Attempt {attempt+1} failed: {e}")
+                time.sleep(3)
+                
+        if not success:
+            raise Exception(f"Failed to download zip from {zip_url} after 3 attempts.")
             
         print("Extracting assets...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
