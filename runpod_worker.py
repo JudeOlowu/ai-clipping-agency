@@ -251,9 +251,8 @@ def longform_process_wrapper(queue, zip_url):
                 cmd = [
                     "ffmpeg", "-y", "-loop", "1", "-i", asset_path,
                     "-t", str(segment_duration),
-                    "-filter_complex",
-                    "scale=3000:-1,zoompan=z='min(zoom+0.0005,1.5)':d=1500:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)',scale=1920:1080,format=yuv420p",
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,format=yuv420p",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                     out_clip
                 ]
                 
