@@ -2,6 +2,7 @@ import runpod
 import os
 import multiprocessing
 import traceback
+import subprocess
 
 def clipper_process_wrapper(queue, video_url, client_title, style, api_key, generate_subtitles, custom_instructions):
     try:
